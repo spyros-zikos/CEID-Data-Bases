@@ -1,0 +1,283 @@
+drop procedure if exists InsertDriver;
+delimiter $
+create procedure InsertDriver(in AT char(10), in name varchar(20), in lastname varchar(20), in salary float(7,2), in license enum('A','B','C','D'), in route enum('LOCAL','ABROAD'),in experience tinyint(4))
+BEGIN
+     declare branch_code int(11);
+     
+     SELECT wrk_br_code into branch_code from worker inner join driver on wrk_AT = drv_AT GROUP BY wrk_br_code ORDER BY count(*) limit 1;
+
+     insert into worker values(AT, name, lastname, salary, branch_code);
+     insert into driver values(AT, license, route, experience);
+
+END$
+DELIMITER ;
+
+
+drop procedure if exists SearchTrip;
+delimiter $ 
+create procedure SearchTrip(in id int, in startdate datetime, in enddate datetime)
+BEGIN
+    CREATE TEMPORARY TABLE temp1 (tr_id1 INT,tr_cost INT,tr_maxseats INT,wrk_name varchar(20),wrk_lname varchar(20), tr_departure DATETIME, tr_return DATETIME);
+    CREATE TEMPORARY TABLE temp2 (tr_id2 INT,numofreservations INT,availableseats INT);
+
+    insert into temp1 select tr_id as trip1, tr_cost,tr_maxseats,wrk_name,wrk_lname, tr_departure, tr_return
+    from branch inner join trip on tr_br_code=br_code 
+                inner join driver on drv_AT=tr_drv_AT 
+                inner join guide on tr_gui_AT=gui_AT 
+                inner join worker on wrk_AT=gui_AT or wrk_AT=drv_AT   
+    where br_code=id and startdate>=tr_departure and startdate<tr_return 
+                     and enddate>tr_departure and enddate<=tr_return;
+ 
+    insert into temp2 select tr_id as trip2, count(*) as numofreservations  , tr_maxseats-count(*) as availableseats
+    from branch 
+                inner join trip on br_code=tr_br_code
+                inner join reservation on tr_id=res_tr_id
+                where br_code=id   
+                group by res_tr_id;
+
+	select * from temp1 inner join temp2 on tr_id1=tr_id2 ; 
+	drop table temp1;
+	drop table temp2;
+
+END$ 
+DELIMITER ;
+
+
+drop procedure if exists deleteAdmin;
+delimiter $ 
+create procedure deleteAdmin(in name varchar(20), in lname varchar(20))
+BEGIN
+    DECLARE type enum('LOGISTICS','ADMINISTRATIVE','ACCOUNTING');
+    select adm_type into type
+    from worker
+                inner join admin on wrk_AT=adm_AT
+                where wrk_name=name and wrk_lname=lname;
+    if (type = 'ADMINISTRATIVE') then 
+            SIGNAL SQLSTATE VALUE '45000'
+            SET MESSAGE_TEXT = 'CAN NOT DELETE ADMIN.';
+    end if;
+    delete from worker where wrk_name=name and wrk_lname=lname;
+END$ 
+DELIMITER ;
+
+
+drop procedure if exists customerPrepay;
+delimiter $ 
+create procedure customerPrepay (in minimumvalue int, in maximumvalue int)
+BEGIN
+    select res_off_ln, res_off_fn from reservation_offers 
+    where res_off_prepay BETWEEN minimumvalue and maximumvalue;
+END$ 
+DELIMITER ;
+
+
+drop procedure if exists customerReservation;
+delimiter $ 
+create procedure customerReservation (in lastname varchar(250))
+BEGIN 
+    
+    select res_off_ln, res_off_fn, res_off_off_id, count(*) from reservation_offers 
+    where res_off_ln=lastname group by res_off_off_id;
+END$ 
+DELIMITER ;
+
+
+CREATE INDEX Prepay USING HASH ON reservation_offers (res_off_prepay);
+
+
+CREATE INDEX Reservations USING HASH ON reservation_offers (res_off_ln);
+
+
+DROP TRIGGER IF EXISTS triggerTripInsert;
+DELIMITER $
+CREATE TRIGGER triggerTripInsert AFTER INSERT ON trip
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'trip', 'insert', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerTripDelete;
+DELIMITER $
+CREATE TRIGGER triggerTripDelete AFTER DELETE ON trip
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'trip', 'delete', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerTripUpdate;
+DELIMITER $
+CREATE TRIGGER triggerTripUpdate AFTER UPDATE ON trip
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'trip', 'update', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerReservationInsert;
+DELIMITER $
+CREATE TRIGGER triggerReservationInsert AFTER INSERT ON reservation
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'reservation', 'insert', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerReservationDelete;
+DELIMITER $
+CREATE TRIGGER triggerReservationDelete AFTER DELETE ON reservation
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'reservation', 'delete', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerReservationUpdate;
+DELIMITER $
+CREATE TRIGGER triggerReservationUpdate AFTER UPDATE ON reservation
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'reservation', 'update', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerTravel_toInsert;
+DELIMITER $
+CREATE TRIGGER triggerTravel_toInsert AFTER INSERT ON travel_to
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'travel_to', 'insert', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerTravel_toDelete;
+DELIMITER $
+CREATE TRIGGER triggerTravel_toDelete AFTER DELETE ON travel_to
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'travel_to', 'delete', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerTravel_toUpdate;
+DELIMITER $
+CREATE TRIGGER triggerTravel_toUpdate AFTER UPDATE ON travel_to
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'travel_to', 'update', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerDestinationInsert;
+DELIMITER $
+CREATE TRIGGER triggerDestinationInsert AFTER INSERT ON destination
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'destination', 'insert', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerDestinationDelete;
+DELIMITER $
+CREATE TRIGGER triggerDestinationDelete AFTER DELETE ON destination
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'destination', 'delete', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS triggerDestinationUpdate;
+DELIMITER $
+CREATE TRIGGER triggerDestinationUpdate AFTER UPDATE ON destination
+FOR EACH ROW
+BEGIN
+    declare lastname varchar(20);
+    select wrk_lname into lastname from worker inner join IT on wrk_AT = IT_AT where active='ACTIVE';
+	insert into log values(NULL,'destination', 'update', lastname, CURRENT_TIMESTAMP());
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS trigger2;
+DELIMITER $
+CREATE TRIGGER trigger2 BEFORE UPDATE ON trip
+FOR EACH ROW
+BEGIN
+    declare counter1 int;
+    select count(*) into counter1 from reservation inner join trip on tr_id=res_tr_id
+    where tr_id=new.tr_id group by tr_id;
+    if(counter1>0 and (old.tr_departure<>new.tr_departure or old.tr_return<>new.tr_return or old.tr_cost<>new.tr_cost)) then
+         SIGNAL SQLSTATE VALUE '45000'
+         SET MESSAGE_TEXT = 'CAN NOT UPDATE';
+    end if;
+	
+END$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS trigger3;
+DELIMITER $
+CREATE TRIGGER trigger3 BEFORE UPDATE ON worker
+FOR EACH ROW
+BEGIN
+    if(new.wrk_salary < old.wrk_salary) then
+        SIGNAL SQLSTATE VALUE '45000'
+        SET MESSAGE_TEXT = 'CAN NOT REDUCE WORKER SALARY!';
+    end if;
+	
+END$
+DELIMITER ;
+
+
+drop trigger if exists autoIncrementseatnum;
+DELIMITER $
+CREATE TRIGGER autoIncrementseatnum
+BEFORE INSERT ON reservation
+FOR EACH ROW
+BEGIN
+ DECLARE maxNum INT(11);
+ SELECT MAX(res_seatnum) INTO maxNum
+ FROM reservation
+ WHERE  res_tr_id=new.res_tr_id
+ group by res_tr_id;
+
+ IF maxNum is NULL THEN 
+    SET maxNum=0;
+END IF;
+ SET NEW.res_seatnum=maxNum+1;
+END$
+DELIMITER ;
